@@ -607,9 +607,10 @@ class DictExportVisitor(object):
         try:
             value_dict = self.pos_sync.fix_embbeded_pos(self.visit(node.value),
                                                         node.lineno)
+            fspec = self.visit(node.format_spec) if node.format_spec else None
             nodedict = {
                     "conversion": node.conversion,
-                    "format_spec": node.format_spec,
+                    "format_spec": fspec,
                     "value": value_dict,
             }
             retdict = self._nodedict(node, nodedict, ast_type="FormattedValue")
