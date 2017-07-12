@@ -180,7 +180,7 @@ class LocationFixer(object):
         token_keys = list(node_keyset.intersection(_TOKEN_KEYS))
 
         if token_keys:
-            node_token = token_keys[0]
+            node_token = nodedict[token_keys[0]]
         else:
             synth_keys = list(node_keyset.intersection(_SYNTHETIC_TOKENS))
             if synth_keys:
@@ -607,9 +607,10 @@ class DictExportVisitor(object):
         try:
             value_dict = self.pos_sync.fix_embbeded_pos(self.visit(node.value),
                                                         node.lineno)
+            fspec = self.visit(node.format_spec) if node.format_spec else None
             nodedict = {
                     "conversion": node.conversion,
-                    "format_spec": node.format_spec,
+                    "format_spec": fspec,
                     "value": value_dict,
             }
             retdict = self._nodedict(node, nodedict, ast_type="FormattedValue")
