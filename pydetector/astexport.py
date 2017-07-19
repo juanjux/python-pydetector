@@ -120,6 +120,43 @@ class LocationFixer(object):
         raise TokenNotFoundException("Token named '{}' not found in line {}"
                 .format(token_value, lineno))
 
+    def _nodetype_fixes(self, nodedict):
+        # Fixes for some common problems in Python locations
+        # Adapted from: https://bitbucket.org/plas/thonny
+
+        node_type = nodedict["ast_type"]
+
+        def copy_pos_from(child):
+            nodedict["lineno"] = child["lineno"]
+            nodedict["col_offset"] = child["col_offset"]
+
+        def compare_pos(other):
+            if nodedict["lineno"] > other["lineno"]:
+                return 1
+            elif nodedict["lineno"] < other["lineno"]:
+                return -1
+            elif nodedict["col_offset"] > other["col_offset"]:
+                return 1
+            elif other["col_offset"] < other["col_offset"]:
+                return -1
+            else:
+                return 0
+
+        if node_type in ("Expr", "Attribute"):
+            if nodedict["value"]["ast_type"] == "Str":
+                copy_pos_from(nodedict["value"])
+
+        else:
+            type2child = {
+                    "Attribute": "value",
+                    "Call": "func",
+                    "Subscript": "value"
+            }
+
+            child_name = type2child.get(node_type)
+            if child_name and compare_pos(nodedict[child_name]) > 0:
+                copy_pos_from(nodedict[child_name])
+
     def _fix_virtualnode_col(self, nodedict):
         """
         These "virtual parent" nodes don't have tokens but we could get the location from
@@ -139,23 +176,7 @@ class LocationFixer(object):
 
         return False
 
-    def fix_embbeded_pos(self, nodedict, add):
-        """
-        For nodes that wrongly start from 1 (line subcode inside f-strings)
-        this fixes the lineno field adding the argument (which should be
-        the parent node correct lineno)
-        """
-
-        nodedict["lineno"] += add - 1
-
-        for key in nodedict:
-            if isinstance(nodedict[key], dict):
-                self.fix_embbeded_pos(nodedict[key], add)
-
-        self.fix_node_col(nodedict, add = 1)
-        return nodedict
-
-    def fix_node_col(self, nodedict, add = 0):
+    def _sync_node_col(self, nodedict, add = 0):
         """
         Check the column position, updating the column if needed (this changes the
         nodedict argument). Some Nodes have questionable column positions in the Python
@@ -200,6 +221,26 @@ class LocationFixer(object):
 
         if node_column is None or node_column != token_startcolumn:
             nodedict["col_offset"] = token_startcolumn + add
+
+    def fix_embeded_pos(self, nodedict, add):
+        """
+        For nodes that wrongly start from 1 (line subcode inside f-strings)
+        this fixes the lineno field adding the argument (which should be
+        the parent node correct lineno)
+        """
+
+        nodedict["lineno"] += add - 1
+
+        for key in nodedict:
+            if isinstance(nodedict[key], dict):
+                self.fix_embeded_pos(nodedict[key], add)
+
+        self._sync_node_col(nodedict, add = 1)
+        return nodedict
+
+    def apply_fixes(self, nodedict):
+        self._nodetype_fixes(nodedict)
+        self._sync_node_col(nodedict)
 
 
 class NoopExtractor(object):
@@ -479,7 +520,7 @@ class DictExportVisitor(object):
         visit_result = meth(node)
 
         if self._checkpos_enabled:
-            self.pos_sync.fix_node_col(visit_result)
+            self.pos_sync.apply_fixes(visit_result)
 
         self._add_noops(node, visit_result, root)
 
@@ -605,7 +646,7 @@ class DictExportVisitor(object):
         # nodes lineno
         self._checkpos_enabled = False  # it wouldn't work without correct lineno
         try:
-            value_dict = self.pos_sync.fix_embbeded_pos(self.visit(node.value),
+            value_dict = self.pos_sync.fix_embeded_pos(self.visit(node.value),
                                                         node.lineno)
             fspec = self.visit(node.format_spec) if node.format_spec else None
             nodedict = {
