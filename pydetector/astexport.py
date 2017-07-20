@@ -550,7 +550,6 @@ class DictExportVisitor(object):
         if self._checkpos_enabled:
             self.pos_sync.apply_fixes(visit_result)
 
-
         if 'col_offset' in visit_result:
             # Python AST gives a 0 based column, bblfsh uses 1-based
             visit_result['col_offset'] += 1
